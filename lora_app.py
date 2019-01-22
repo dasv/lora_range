@@ -1,21 +1,29 @@
 
 from flask_socketio import SocketIO, emit
-from flask import Flask, render_template, url_for, copy_current_request_context
-from time import sleep
+from flask import Flask, render_template, url_for, copy_current_request_context, jsonify
+import time
 from threading import Thread, Event
 from flask_sqlalchemy import SQLAlchemy
-from SX127x.LoRa import *
-from SX127x.board_config import BOARD
+#from SX127x.LoRa import *
+#from SX127x.board_config import BOARD
+import random
+import os
+
+
+
+project_dir = os.path.dirname(os.path.abspath(__file__))
+database_file = "sqlite:///{}".format(os.path.join(project_dir, "points.db"))
 
 app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = database_file
+
 app.config['SECRET_KEY'] = 'ordidro'
 app.config['DEBUG'] = True
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////tmp/test.db'
 db = SQLAlchemy(app)
 
-BOARD.setup()
-BOARD.reset()
+#BOARD.setup()
+#BOARD.reset()
 
 
 #turn the flask app into a socketio app
@@ -25,6 +33,33 @@ socketio = SocketIO(app)
 thread = Thread()
 thread_stop_event = Event()
 
+class RandomThread(Thread):
+    def __init__(self):
+        self.delay = 1
+        super(RandomThread, self).__init__()
+
+    def randomNumberGenerator(self):
+        """
+        Generate a random number every 1 second and emit to a socketio instance (broadcast)
+        Ideally to be run in a separate thread?
+        """
+        #infinite loop of magical random numbers
+        print("Making random numbers")
+        while not thread_stop_event.isSet():
+            latLon = [0, 0]
+            latLon[0] = random.uniform(40.441, 40.437)
+            latLon[1] = random.uniform(-3.687, -3.691)
+            _rssi = random.uniform(0,1)
+            point = Ping(lat=latLon[0], lon=latLon[1], rssi=_rssi, snr=0, id=int(time.time()))
+            db.session.add(point)
+            db.session.commit()
+            print(latLon)
+            socketio.emit('newcoord', {'lat': latLon[0], 'lon': latLon[1], 'rssi': _rssi}, namespace='/test')
+            time.sleep(self.delay)
+
+    def run(self):
+        self.randomNumberGenerator()
+""" 
 class mylora(LoRa):
     def __init__(self, verbose=False):
         super(mylora, self).__init__(verbose)
@@ -53,10 +88,10 @@ class mylora(LoRa):
     
     def msg_ready(self):
         return self.received_new
-
+ """
     
 
-class LoRaThread(Thread):
+""" class LoRaThread(Thread):
     def __init__(self):
         self.delay = 1
         super(LoRaThread, self).__init__()
@@ -72,31 +107,29 @@ class LoRaThread(Thread):
         assert(self.lora.get_agc_auto_on() == 1)
 
     def loraListener(self):
-        """
-        Generate a random number every 1 second and emit to a socketio instance (broadcast)
-        Ideally to be run in a separate thread?
-        """
-        #infinite loop of magical random numbers
         print("Making random numbers")
         while not thread_stop_event.isSet():
             if self.lora.msg_ready():
                 latLon = self.lora.get_last_message()
                 rssi = self.lora.get_pkt_rssi_value()
+                snr = self.lora.get_pkt_snr_value()
                 print(latLon)
-                socketio.emit('newcoord', {'lat': float(latLon[0]), 'lon': float(latLon[1]), 'rssi': rssi}, namespace='/test')
+                socketio.emit('newcoord', {'lat': float(latLon[0]), 'lon': float(latLon[1]), 'rssi': rssi, 'snr': snr}, namespace='/test')
                 sleep(self.delay)
 
     def run(self):
         self.startLoRa()
         self.loraListener()
+ """
 
 
 class Ping(db.Model):
+    __table_args__ = {'sqlite_autoincrement': True}
     id = db.Column(db.Integer, primary_key=True)
     lat = db.Column(db.Float)
     lon = db.Column(db.Float)
-    rssi = db.column(db.Integer)
-    snr = db.column(db.Integer)
+    rssi = db.Column(db.Integer)
+    snr = db.Column(db.Integer)
     
     def __init__(self, id, lat, lon, rssi, snr):
         self.id = id
@@ -115,6 +148,12 @@ def index():
     #only by sending this page first will the client be connected to the socketio instance
     return render_template('index.html')
 
+@app.route('/getpoints')
+def getpoints(district_id):
+    points = Point.query.all()
+    coords = [[point.lat, point.lon, point.rssi] for point in points]
+    return jsonify({"data": coords})
+
 @socketio.on('connect', namespace='/test')
 def test_connect():
     # need visibility of the global thread object
@@ -124,7 +163,7 @@ def test_connect():
     #Start the random number generator thread only if the thread has not been started before.
     if not thread.isAlive():
         print("Starting Thread")
-        thread = LoRaThread()
+        thread = RandomThread()
         thread.start()
 
 @socketio.on('disconnect', namespace='/test')
