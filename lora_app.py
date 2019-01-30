@@ -8,6 +8,10 @@ from flask_sqlalchemy import SQLAlchemy
 #from SX127x.board_config import BOARD
 import random
 import os
+import struct
+
+import eventlet
+eventlet.monkey_patch()
 
 
 
@@ -33,6 +37,7 @@ socketio = SocketIO(app)
 thread = Thread()
 thread_stop_event = Event()
 
+"""
 class RandomThread(Thread):
     def __init__(self):
         self.delay = 1
@@ -78,20 +83,17 @@ class mylora(LoRa):
 
     
     def get_last_message(self):
-        latLonDecoded = self.payload.decode("utf-8")
-        self.latLon = latLonDecoded.split(',')
         self.received_new = 0
-        return self.latLon
+        return self.payload
 
     def get_rssi(self):
         return self.get_pkt_rssi_value()
     
     def msg_ready(self):
         return self.received_new
- """
+ 
     
-
-""" class LoRaThread(Thread):
+class LoRaThread(Thread):
     def __init__(self):
         self.delay = 1
         super(LoRaThread, self).__init__()
@@ -110,17 +112,21 @@ class mylora(LoRa):
         print("Making random numbers")
         while not thread_stop_event.isSet():
             if self.lora.msg_ready():
-                latLon = self.lora.get_last_message()
-                rssi = self.lora.get_pkt_rssi_value()
-                snr = self.lora.get_pkt_snr_value()
-                print(latLon)
-                socketio.emit('newcoord', {'lat': float(latLon[0]), 'lon': float(latLon[1]), 'rssi': rssi, 'snr': snr}, namespace='/test')
+                payload = self.lora.get_last_message()
+                _lat, _lon = struct.unpack('ff', payload)
+                _rssi = self.lora.get_pkt_rssi_value()
+                _snr = self.lora.get_pkt_snr_value()
+                print("lat: ")
+                print(_lat)
+                print(" lon: ")
+                print("\r\n")
+                socketio.emit('newcoord', {'lat': float(_lat), 'lon': float(_lon), 'rssi': _rssi, 'snr': _snr}, namespace='/test')
                 sleep(self.delay)
 
     def run(self):
         self.startLoRa()
         self.loraListener()
- """
+
 
 
 class Ping(db.Model):
