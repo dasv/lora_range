@@ -4,8 +4,8 @@ from flask import Flask, render_template, url_for, copy_current_request_context,
 import time
 from threading import Thread, Event
 from flask_sqlalchemy import SQLAlchemy
-#from SX127x.LoRa import *
-#from SX127x.board_config import BOARD
+from SX127x.LoRa import *
+from SX127x.board_config import BOARD
 import random
 import os
 import struct
@@ -44,10 +44,6 @@ class RandomThread(Thread):
         super(RandomThread, self).__init__()
 
     def randomNumberGenerator(self):
-        """
-        Generate a random number every 1 second and emit to a socketio instance (broadcast)
-        Ideally to be run in a separate thread?
-        """
         #infinite loop of magical random numbers
         print("Making random numbers")
         while not thread_stop_event.isSet():
@@ -73,6 +69,13 @@ class mylora(LoRa):
         self.received_new=0
         self.latLon =[]
         self.payload = ""
+        self.set_pa_config(pa_select=1, max_power=21, output_power=15)
+        self.set_bw(BW.BW125)
+        self.set_coding_rate(CODING_RATE.CR4_8)
+        self.set_spreading_factor(12)
+        self.set_rx_crc(True)
+        self.set_low_data_rate_optim(True)
+        assert(self.get_agc_auto_on() == 1)
 
     def on_rx_done(self):
         self.clear_irq_flags(RxDone=1)
@@ -99,15 +102,6 @@ class LoRaThread(Thread):
         super(LoRaThread, self).__init__()
         self.lora = mylora(verbose=False)
 
-    def startLoRa(self):
-        self.lora.set_pa_config(pa_select=1, max_power=21, output_power=15)
-        self.lora.set_bw(BW.BW125)
-        self.lora.set_coding_rate(CODING_RATE.CR4_8)
-        self.lora.set_spreading_factor(12)
-        self.lora.set_rx_crc(True)
-        self.lora.set_low_data_rate_optim(True)
-        assert(self.lora.get_agc_auto_on() == 1)
-
     def loraListener(self):
         print("Making random numbers")
         while not thread_stop_event.isSet():
@@ -121,10 +115,9 @@ class LoRaThread(Thread):
                 print(" lon: ")
                 print("\r\n")
                 socketio.emit('newcoord', {'lat': float(_lat), 'lon': float(_lon), 'rssi': _rssi, 'snr': _snr}, namespace='/test')
-                sleep(self.delay)
+                time.sleep(self.delay)
 
     def run(self):
-        self.startLoRa()
         self.loraListener()
 
 
