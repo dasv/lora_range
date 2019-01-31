@@ -113,6 +113,9 @@ class LoRaThread(Thread):
                 db.session.commit()
                 #Se duerme el hilo hasta la siguiente activación
                 time.sleep(self.delay)
+    
+    def shutdown(self):
+        self.lora.set_mode(SLEEP)
 
     def run(self):
         self.loraListener()
@@ -185,7 +188,7 @@ def test_disconnect():
 
 #Función para desconectar el módem y cerrar el hilo que lo maneja al cerrar el programa
 def closing_function():
-    LoRaThread.lora.set_mode(MODE.SLEEP)
+    LoRaThread.shutdown()
     BOARD.teardown()
     thread.join()
 #Register the function to be called on exit
